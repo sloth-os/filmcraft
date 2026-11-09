@@ -76,6 +76,8 @@ jobs:
           actual=$(sha256sum binaryen.tar.gz | awk '{print $1}')
           test "$expected" = "$actual" || { echo "error: binaryen checksum mismatch" >&2; exit 1; }
           tar xzf binaryen.tar.gz
+          # GITHUB_PATH only applies to later steps; export for this step's check too.
+          export PATH="$PWD/binaryen-$version/bin:$PATH"
           echo "$PWD/binaryen-$version/bin" >> "$GITHUB_PATH"
           wasm-opt --version
 
