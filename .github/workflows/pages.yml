@@ -1,0 +1,121 @@
+name: Pages
+
+# Publishes the FilmCraft web (wasm) build to GitHub Pages as an installable,
+# offline-capable PWA. The app itself is built unmodified from storytold/filmcraft
+# with the same recipe as its official release web job (cargo xtask web, no
+# craft-fonts, wasm-bindgen at the version xtask pins); this repository only adds
+# the PWA layer (manifest, service worker, icons) on top of the built dist.
+
+on:
+  schedule:
+    # Weekly, off the round hour so runs spread out across GitHub's fleet.
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      upstream-ref:
+        description: "storytold/filmcraft ref to build (default: main)"
+        type: string
+        default: "main"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out FilmCraft upstream
+        id: upstream
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: storytold/filmcraft
+          ref: ${{ inputs.upstream-ref || 'main' }}
+          path: filmcraft
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: pages-web
+          workspaces: filmcraft
+
+      - name: Install wasm-bindgen at the version xtask pins
+        run: |
+          version=$(sed -n 's/^const WASM_BINDGEN: &str = "\(.*\)";$/\1/p' filmcraft/xtask/src/main.rs)
+          test -n "$version" || { echo "error: no WASM_BINDGEN pin in xtask/src/main.rs" >&2; exit 1; }
+          echo "installing wasm-bindgen-cli $version"
+          cargo install wasm-bindgen-cli --version "$version" --locked
+
+      - name: Install binaryen (wasm-opt shrinks the wasm payload)
+        run: |
+          version=version_133
+          base=https://github.com/WebAssembly/binaryen/releases/download/$version/binaryen-$version-x86_64-linux.tar.gz
+          curl -fsSL -o binaryen.tar.gz "$base"
+          curl -fsSL -o binaryen.tar.gz.sha256 "$base.sha256"
+          expected=$(awk '{print $1}' binaryen.tar.gz.sha256)
+          actual=$(sha256sum binaryen.tar.gz | awk '{print $1}')
+          test "$expected" = "$actual" || { echo "error: binaryen checksum mismatch" >&2; exit 1; }
+          tar xzf binaryen.tar.gz
+          echo "$PWD/binaryen-$version/bin" >> "$GITHUB_PATH"
+          wasm-opt --version
+
+      - name: Build the web app
+        working-directory: filmcraft
+        run: cargo xtask web
+
+      - name: Assemble the site (app plus PWA layer)
+        run: |
+          cp -R filmcraft/target/web/dist site
+          python3 pwa/apply.py site filmcraft "${{ steps.upstream.outputs.commit }}"
+
+      - name: Sanity-check the assembled site
+        run: |
+          grep -q 'rel="manifest"' site/index.html
+          grep -q 'serviceWorker' site/index.html
+          node --check site/sw.js
+          # The site may live under a subpath (user.github.io/repo/), so no root-absolute URLs.
+          if grep -nE '(src|href)="/' site/index.html; then
+            echo "error: root-absolute URL in index.html" >&2
+            exit 1
+          fi
+          ls -l site site/icons
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
