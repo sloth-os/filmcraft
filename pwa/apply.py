@@ -23,6 +23,7 @@ DOCS = ("README.md", "LICENSE-MIT", "LICENSE-APACHE", "NOTICE", "ATTRIBUTION.md"
 HEAD_TAGS = """  <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#1b1c1f">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <script defer src="file-handler.js"></script>
 """
 
 BODY_TAGS = """  <script>
@@ -53,6 +54,7 @@ def main(dist: Path, upstream: Path, upstream_sha: str) -> int:
 
     # Manifest and icons.
     shutil.copy2(PWA / "manifest.webmanifest", dist / "manifest.webmanifest")
+    shutil.copy2(PWA / "file-handler.js", dist / "file-handler.js")
     icons = dist / "icons"
     icons.mkdir(exist_ok=True)
     for png in sorted((PWA / "icons").glob("*.png")):
@@ -90,8 +92,11 @@ def main(dist: Path, upstream: Path, upstream_sha: str) -> int:
     checks = [
         ('rel="manifest"' in html, "index.html links the manifest"),
         ("serviceWorker" in html, "index.html registers the service worker"),
+        ('src="file-handler.js"' in html, "index.html loads the file-handling consumer"),
         (f'const BUILD = "{build}"' in (dist / "sw.js").read_text(encoding="utf-8"), "sw.js carries the build hash"),
         ((dist / "manifest.webmanifest").is_file(), "manifest present"),
+        ('"file_handlers"' in (dist / "manifest.webmanifest").read_text(encoding="utf-8"), "manifest declares file handlers"),
+        ((dist / "file-handler.js").is_file(), "file-handler.js present"),
         ((icons / "icon-maskable-512.png").is_file(), "maskable icon present"),
     ]
     for ok, label in checks:

@@ -16,6 +16,11 @@ resulting `dist/`:
   `index.html` puts in its asset URLs: the shell is precached, the page is
   network-first with a cache fallback, hashed assets are cache-first, and each
   build's cache replaces the last on activate,
+- `pwa/file-handler.js` — PWA File Handling: an installed app registers as an
+  OS handler for the media and project types FilmCraft imports
+  (`manifest.webmanifest`'s `file_handlers`), and the launchQueue consumer
+  hands opened files to the app's own `window.filmcraft.importFiles` /
+  `openProject` API once start-up completes,
 - `pwa/icons/` — 192/512 `any` icons plus a maskable 512 and an Apple touch
   icon, all derived from `assets/app-icon/filmcraft-1024.png` upstream.
 

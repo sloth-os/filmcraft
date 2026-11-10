@@ -9,6 +9,22 @@
   "background_color": "#1b1c1f",
   "theme_color": "#1b1c1f",
   "categories": ["video", "productivity"],
+  "file_handlers": [
+    {
+      "action": "./",
+      "name": "FilmCraft media and projects",
+      "accept": {
+        "video/*": [".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".mxf", ".mts", ".m2ts", ".m2t", ".ts", ".mpg", ".mpeg", ".vob", ".mod", ".tod", ".m2v", ".m1v", ".mpv", ".3gp", ".y4m", ".apv"],
+        "audio/*": [".wav", ".wave", ".bwf", ".aif", ".aiff", ".mp3", ".mp2", ".m4a", ".aac", ".flac", ".ogg", ".opus"],
+        "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".tif", ".tiff", ".bmp", ".tga", ".dpx", ".exr", ".hdr", ".dng", ".psd"],
+        "text/vtt": [".vtt"],
+        "text/plain": [".srt", ".edl"],
+        "application/xml": [".xml", ".fcpxml"],
+        "application/octet-stream": [".scc", ".otio", ".aaf", ".omf", ".omfi", ".prfpset"],
+        "application/x-filmcraft": [".fcproj"]
+      }
+    }
+  ],
   "icons": [
     {
       "src": "icons/icon-192.png",

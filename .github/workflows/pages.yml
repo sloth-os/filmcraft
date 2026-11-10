@@ -94,7 +94,9 @@ jobs:
         run: |
           grep -q 'rel="manifest"' site/index.html
           grep -q 'serviceWorker' site/index.html
+          grep -q 'file-handler.js' site/index.html
           node --check site/sw.js
+          node --check site/file-handler.js
           # The site may live under a subpath (user.github.io/repo/), so no root-absolute URLs.
           if grep -nE '(src|href)="/' site/index.html; then
             echo "error: root-absolute URL in index.html" >&2

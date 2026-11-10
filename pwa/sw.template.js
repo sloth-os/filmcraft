@@ -10,13 +10,15 @@ const CACHE = "filmcraft-web-" + BUILD;
 
 // The app shell: the page itself, the wasm-bindgen glue and the wasm module
 // under their build-hashed (hence immutable) URLs, the AudioWorklet script the
-// app loads by plain relative URL, and the manifest with its icons.
+// app loads by plain relative URL, the file-handling consumer, and the
+// manifest with its icons.
 const SHELL = [
   "./",
   "./index.html",
   "./filmcraft_web.js?v=" + BUILD,
   "./filmcraft_web_bg.wasm?v=" + BUILD,
   "./audio-worklet.js",
+  "./file-handler.js",
   "./favicon.png",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
@@ -44,21 +46,59 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// The cached page for a navigation: the exact URL first (launch and deep-link
+// URLs), then the shell, then the given fallback (or a network error).
+function shellOr(request, fallback) {
+  return caches
+    .match(request)
+    .then((hit) => hit || caches.match("./index.html"))
+    .then((hit) => hit || fallback || Response.error());
+}
+
+// Keep the cached shell current: the index.html key every navigation refreshes,
+// plus the scope-root key install precaches and shellOr matches first for launch
+// URLs — a launch that falls back to a stale root key would boot an old build.
+function rememberShell(request, response) {
+  const copies = [response.clone(), response.clone()];
+  const keys = ["./index.html"];
+  if (new URL(request.url).pathname === new URL(self.registration.scope).pathname) keys.push("./");
+  caches
+    .has(CACHE)
+    .then((mine) => mine && caches.open(CACHE).then((cache) => Promise.all(keys.map((key, i) => cache.put(key, copies[i])))))
+    .catch(() => {});
+}
+
+// Cache a fetched asset only while this build's cache still exists and, for
+// versioned URLs, only for this build's version: a replaced worker must neither
+// resurrect its purged cache nor store another build's immutable assets in it.
+function putMine(request, response) {
+  const v = new URL(request.url).searchParams.get("v");
+  if (v !== null && v !== BUILD) return;
+  caches
+    .has(CACHE)
+    .then((mine) => mine && caches.open(CACHE).then((cache) => cache.put(request, response)))
+    .catch(() => {});
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
 
   // The page itself: network first so a new weekly build is picked up on the
-  // next visit, cache fallback for offline use.
+  // next visit, cache fallback for offline use. A non-ok response (a path the
+  // static host 404s, like a file-handler action URL) serves the cached shell
+  // instead, and only ok responses refresh the cached copy.
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put("./index.html", copy)).catch(() => {});
-          return response;
+          if (response.ok) {
+            rememberShell(request, response);
+            return response;
+          }
+          return shellOr(request, response);
         })
-        .catch(() => caches.match(request).then((hit) => hit || caches.match("./index.html")))
+        .catch(() => shellOr(request, null))
     );
     return;
   }
@@ -73,7 +113,7 @@ self.addEventListener("fetch", (event) => {
         fetch(request).then((response) => {
           if (response.ok) {
             const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+            putMine(request, copy);
           }
           return response;
         })
